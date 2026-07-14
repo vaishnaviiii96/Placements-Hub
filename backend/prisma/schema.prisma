@@ -1,0 +1,225 @@
+// Prisma schema for Zenith Placement Prep
+// Covers all core entities + analytics tables (SearchLog, UserSession)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────── User ──────────────────────────
+
+enum UserRole {
+  student
+}
+
+model User {
+  id         String   @id @default(cuid())
+  zenithId    String   @unique @map("zenith_id")
+  name       String
+  email      String?  @unique
+  password   String
+  role       UserRole @default(student)
+  branch     String?
+  batchYear  Int?     @map("batch_year")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  submissions  Submission[]
+  comments     Comment[]
+  upvotes      Upvote[]
+  bookmarks    Bookmark[]
+  reports      Report[]     @relation("ReportedBy")
+  sessions     UserSession[]
+
+  @@map("users")
+}
+
+// ────────────────────────── Company ──────────────────────────
+
+model Company {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  logoUrl  String? @map("logo_url")
+  industry String?
+
+  submissions Submission[]
+
+  @@map("companies")
+}
+
+// ────────────────────────── Submission ──────────────────────────
+
+enum SubmissionStatus {
+  pending
+  approved
+  rejected
+}
+
+model Submission {
+  id            String           @id @default(cuid())
+  userId        String?          @map("user_id")
+  companyId     String           @map("company_id")
+  roleApplied   String           @map("role_applied")
+  interviewDate DateTime?        @map("interview_date")
+  ctc           String?
+  status        SubmissionStatus @default(pending)
+  overallTips   String?          @map("overall_tips") @db.Text
+  isAnonymous   Boolean          @default(false) @map("is_anonymous")
+  upvoteCount   Int              @default(0) @map("upvote_count")
+  viewCount     Int              @default(0) @map("view_count")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  rounds    Round[]
+  comments  Comment[]
+  upvotes   Upvote[]
+  bookmarks Bookmark[]
+  reports   Report[]
+
+  @@map("submissions")
+}
+
+// ────────────────────────── Round ──────────────────────────
+
+enum RoundType {
+  OA
+  Technical
+  HR
+  Managerial
+  GD
+}
+
+enum Difficulty {
+  easy
+  medium
+  hard
+}
+
+model Round {
+  id           String     @id @default(cuid())
+  submissionId String     @map("submission_id")
+  roundType    RoundType  @map("round_type")
+  questions    String     @db.Text
+  difficulty   Difficulty @default(medium)
+  orderIndex   Int        @default(0) @map("order_index")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  roundTags  RoundTag[]
+
+  @@map("rounds")
+}
+
+// ────────────────────────── Tag ──────────────────────────
+
+model Tag {
+  id   String @id @default(cuid())
+  name String @unique
+
+  roundTags RoundTag[]
+
+  @@map("tags")
+}
+
+model RoundTag {
+  roundId String @map("round_id")
+  tagId   String @map("tag_id")
+
+  round Round @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([roundId, tagId])
+  @@map("round_tags")
+}
+
+// ────────────────────────── Comment ──────────────────────────
+
+model Comment {
+  id           String   @id @default(cuid())
+  submissionId String   @map("submission_id")
+  userId       String   @map("user_id")
+  text         String   @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
+
+// ────────────────────────── Upvote ──────────────────────────
+
+model Upvote {
+  userId       String @map("user_id")
+  submissionId String @map("submission_id")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, submissionId])
+  @@map("upvotes")
+}
+
+// ────────────────────────── Bookmark ──────────────────────────
+
+model Bookmark {
+  userId       String   @map("user_id")
+  submissionId String   @map("submission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, submissionId])
+  @@map("bookmarks")
+}
+
+// ────────────────────────── Report ──────────────────────────
+
+enum ReportStatus {
+  open
+  resolved
+  dismissed
+}
+
+model Report {
+  id           String       @id @default(cuid())
+  submissionId String?      @map("submission_id")
+  commentId    String?      @map("comment_id")
+  reporterId   String       @map("reporter_id")
+  reason       String       @db.Text
+  status       ReportStatus @default(open)
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  submission Submission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  reporter   User        @relation("ReportedBy", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@map("reports")
+}
+
+// ────────────────────────── Analytics: SearchLog ──────────────────────────
+// Fully anonymized — no user_id
+
+model SearchLog {
+  id          String   @id @default(cuid())
+  query       String
+  resultCount Int      @map("result_count")
+  searchedAt  DateTime @default(now()) @map("searched_at")
+
+  @@map("search_logs")
+}
+
+// ────────────────────────── Analytics: UserSession ──────────────────────────
+
+model UserSession {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  loggedInAt DateTime @default(now()) @map("logged_in_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_sessions")
+}
