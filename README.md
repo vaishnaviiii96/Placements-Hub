@@ -1,5 +1,7 @@
 # Placements
 
+Note: This repository contains a standalone clone/replica of the platform developed during my internship. To comply with institutional privacy policies, the original name, theme, and branding have been modified, and sensitive production data has been omitted.
+
 A full-stack placement preparation platform built for Zenith University students. Track your interview experiences, practice questions by topic, and analyze your preparation progress with rich analytics.
 
 ## Tech Stack
